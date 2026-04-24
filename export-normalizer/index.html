@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Export Normalizer — ChatGPT &amp; Claude</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: #161a22;
+      --panel-2: #1d2230;
+      --border: #262b38;
+      --text: #e6e9ef;
+      --muted: #8a93a6;
+      --accent: #7c9cff;
+      --accent-2: #5cd9b6;
+      --user: #6ea8ff;
+      --asst: #5cd9b6;
+      --sys: #c9a85c;
+      --tool: #c97cd9;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body {
+      background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      display: flex; flex-direction: column;
+    }
+    header {
+      padding: 18px 24px; border-bottom: 1px solid var(--border);
+      display: flex; gap: 16px; align-items: center;
+    }
+    header h1 { margin: 0; font-size: 16px; font-weight: 600; }
+    header .sub { color: var(--muted); font-size: 12px; }
+    header .spacer { flex: 1; }
+    .btn {
+      background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+      padding: 7px 12px; border-radius: 6px; font-size: 13px; cursor: pointer;
+    }
+    .btn:hover { border-color: var(--accent); }
+    .btn.primary { background: var(--accent); color: #0b1020; border-color: var(--accent); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    main { flex: 1; min-height: 0; display: flex; }
+    .empty {
+      flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px;
+    }
+    .dropzone {
+      border: 2px dashed var(--border); border-radius: 12px; padding: 48px 64px;
+      text-align: center; max-width: 640px; cursor: pointer; background: var(--panel);
+    }
+    .dropzone.drag { border-color: var(--accent); background: var(--panel-2); }
+    .dropzone h2 { margin: 0 0 8px; font-size: 18px; }
+    .dropzone p { margin: 4px 0; color: var(--muted); }
+    .dropzone code { background: var(--panel-2); padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+
+    .layout { display: grid; grid-template-columns: 320px 1fr; flex: 1; min-height: 0; }
+    .sidebar {
+      border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0;
+      background: var(--panel);
+    }
+    .sidebar-head { padding: 12px; border-bottom: 1px solid var(--border); display: flex; gap: 8px; }
+    .sidebar-tabs { display: flex; gap: 4px; padding: 8px 8px 0; }
+    .sidebar-tabs .tab {
+      flex: 1; padding: 6px 10px; text-align: center; cursor: pointer; border-radius: 6px;
+      color: var(--muted); font-size: 12px;
+    }
+    .sidebar-tabs .tab.active { background: var(--panel-2); color: var(--text); }
+    .search {
+      width: 100%; background: var(--bg); border: 1px solid var(--border);
+      color: var(--text); padding: 6px 10px; border-radius: 6px; font-size: 13px;
+    }
+    .list { flex: 1; overflow-y: auto; padding: 4px; }
+    .list-item {
+      padding: 8px 10px; border-radius: 6px; cursor: pointer; display: flex; flex-direction: column; gap: 2px;
+    }
+    .list-item:hover { background: var(--panel-2); }
+    .list-item.active { background: var(--panel-2); border-left: 2px solid var(--accent); padding-left: 8px; }
+    .list-item .title { font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .list-item .meta { font-size: 11px; color: var(--muted); display: flex; gap: 6px; }
+    .badge {
+      padding: 1px 6px; border-radius: 999px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+      background: var(--panel-2); color: var(--muted); border: 1px solid var(--border);
+    }
+    .badge.chatgpt { color: #5cd9b6; border-color: #2a4a3e; }
+    .badge.claude { color: #c9a85c; border-color: #4a3e2a; }
+
+    .content { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+    .content-head {
+      padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; align-items: center;
+    }
+    .content-head h2 { margin: 0; font-size: 15px; font-weight: 600; flex: 1;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .content-head .meta { color: var(--muted); font-size: 12px; }
+    .content-body { flex: 1; overflow-y: auto; padding: 16px 20px; }
+
+    .summary {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px;
+      margin-bottom: 20px;
+    }
+    .summary .card {
+      background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px;
+    }
+    .summary .card .num { font-size: 22px; font-weight: 600; }
+    .summary .card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+    .sources { margin-top: 12px; }
+    .source-row {
+      display: flex; gap: 10px; align-items: center; font-size: 12px;
+      padding: 6px 0; border-bottom: 1px solid var(--border);
+    }
+    .source-row:last-child { border-bottom: none; }
+
+    .message {
+      padding: 10px 14px; border-radius: 8px; margin-bottom: 10px;
+      background: var(--panel); border: 1px solid var(--border);
+      white-space: pre-wrap; word-wrap: break-word; word-break: break-word;
+    }
+    .message-head {
+      display: flex; gap: 8px; align-items: center; font-size: 11px; color: var(--muted);
+      margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .message-head .role.user { color: var(--user); }
+    .message-head .role.assistant { color: var(--asst); }
+    .message-head .role.system { color: var(--sys); }
+    .message-head .role.tool { color: var(--tool); }
+    .message .body { font-size: 13px; }
+    .message .attachment {
+      display: inline-block; padding: 2px 8px; margin-right: 6px; margin-top: 6px;
+      border: 1px solid var(--border); border-radius: 4px; font-size: 11px; color: var(--muted);
+    }
+
+    .project-detail h3 { margin: 0 0 6px; font-size: 14px; }
+    .project-detail .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 16px; }
+    .project-detail pre {
+      background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px;
+      padding: 10px; overflow-x: auto; font-size: 12px; white-space: pre-wrap;
+    }
+    .project-detail .doc {
+      border: 1px solid var(--border); border-radius: 6px; padding: 10px; margin-top: 8px;
+    }
+
+    .toast {
+      position: fixed; bottom: 16px; right: 16px; background: var(--panel-2);
+      border: 1px solid var(--border); padding: 10px 14px; border-radius: 6px;
+      color: var(--text); font-size: 13px; max-width: 360px;
+    }
+    .toast.error { border-color: #c95c5c; color: #ffb4b4; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Export Normalizer</h1>
+    <span class="sub">ChatGPT &amp; Claude → unified JSON</span>
+    <span class="spacer"></span>
+    <button class="btn" id="loadMore" hidden>Add more files</button>
+    <button class="btn primary" id="downloadBtn" hidden>Download normalized.json</button>
+    <button class="btn" id="resetBtn" hidden>Reset</button>
+  </header>
+
+  <main>
+    <div class="empty" id="empty">
+      <div class="dropzone" id="dropzone">
+        <h2>Drop your export files here</h2>
+        <p>or <a href="#" id="pickLink" style="color: var(--accent)">choose files</a></p>
+        <p style="margin-top: 12px;">
+          Accepts ChatGPT <code>.zip</code> exports and Claude <code>.zip</code> exports,
+          or raw <code>conversations.json</code> / <code>projects.json</code>.
+        </p>
+        <p style="font-size: 12px; margin-top: 16px;">All processing happens in your browser. Nothing is uploaded.</p>
+      </div>
+      <input type="file" id="fileInput" multiple accept=".json,.zip,application/json,application/zip" style="display:none" />
+    </div>
+
+    <div class="layout hidden" id="app">
+      <aside class="sidebar">
+        <div class="sidebar-tabs">
+          <div class="tab active" data-tab="conversations">Conversations</div>
+          <div class="tab" data-tab="projects">Projects</div>
+          <div class="tab" data-tab="summary">Summary</div>
+        </div>
+        <div class="sidebar-head">
+          <input type="search" class="search" id="searchInput" placeholder="Search…" />
+        </div>
+        <div class="list" id="list"></div>
+      </aside>
+      <section class="content">
+        <div class="content-head">
+          <h2 id="detailTitle">Select an item</h2>
+          <span class="meta" id="detailMeta"></span>
+        </div>
+        <div class="content-body" id="detailBody"></div>
+      </section>
+    </div>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="normalizer.js"></script>
+  <script>
+    const state = {
+      data: null,        // combined normalized doc
+      results: [],       // per-file normalization results (for re-combining)
+      tab: "conversations",
+      selectedId: null,
+      filter: "",
+    };
+
+    const $ = (id) => document.getElementById(id);
+    const dropzone = $("dropzone");
+    const fileInput = $("fileInput");
+    const empty = $("empty");
+    const app = $("app");
+    const list = $("list");
+
+    function showToast(msg, isError) {
+      const t = $("toast");
+      t.textContent = msg;
+      t.classList.remove("hidden", "error");
+      if (isError) t.classList.add("error");
+      clearTimeout(showToast._timer);
+      showToast._timer = setTimeout(() => t.classList.add("hidden"), 4000);
+    }
+
+    function fmtDate(iso) {
+      if (!iso) return "";
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return "";
+      return d.toLocaleString();
+    }
+
+    async function readZipAsBundle(file) {
+      const zip = await JSZip.loadAsync(file);
+      const out = {};
+      const tasks = [];
+      zip.forEach((path, entry) => {
+        if (entry.dir) return;
+        if (!/\.json$/i.test(path)) return;
+        tasks.push(entry.async("string").then((text) => { out[path] = text; }));
+      });
+      await Promise.all(tasks);
+      return out;
+    }
+
+    async function processFiles(files) {
+      const results = [];
+      for (const file of files) {
+        try {
+          if (/\.zip$/i.test(file.name)) {
+            const bundle = await readZipAsBundle(file);
+            results.push(Normalizer.normalizeBundle(bundle, file.name));
+          } else if (/\.json$/i.test(file.name)) {
+            const text = await file.text();
+            results.push(Normalizer.normalizeJSON(text, file.name));
+          } else {
+            showToast(`Skipping ${file.name}: unsupported file type`, true);
+          }
+        } catch (err) {
+          console.error(err);
+          showToast(`Failed to parse ${file.name}: ${err.message}`, true);
+        }
+      }
+      if (!results.length) return;
+      state.results = state.results.concat(results);
+      state.data = Normalizer.combine(state.results);
+
+      empty.classList.add("hidden");
+      app.classList.remove("hidden");
+      $("downloadBtn").hidden = false;
+      $("resetBtn").hidden = false;
+      $("loadMore").hidden = false;
+
+      // Auto-select something useful.
+      if (state.data.conversations.length) {
+        state.tab = "conversations";
+        state.selectedId = state.data.conversations[0].id;
+      } else if (state.data.projects.length) {
+        state.tab = "projects";
+        state.selectedId = state.data.projects[0].id;
+      } else {
+        state.tab = "summary";
+        state.selectedId = null;
+      }
+      render();
+      showToast(`Loaded ${results.length} file(s)`);
+    }
+
+    function render() {
+      // Tabs
+      document.querySelectorAll(".tab").forEach((el) => {
+        el.classList.toggle("active", el.dataset.tab === state.tab);
+      });
+      $("searchInput").value = state.filter;
+      $("searchInput").placeholder = state.tab === "summary" ? "Search disabled" : "Search…";
+      $("searchInput").disabled = state.tab === "summary";
+      renderList();
+      renderDetail();
+    }
+
+    function renderList() {
+      list.innerHTML = "";
+      if (!state.data) return;
+      const filter = state.filter.toLowerCase();
+
+      if (state.tab === "conversations") {
+        const items = state.data.conversations
+          .filter((c) => !filter || (c.title || "").toLowerCase().includes(filter))
+          .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+        for (const c of items) {
+          const el = document.createElement("div");
+          el.className = "list-item" + (c.id === state.selectedId ? " active" : "");
+          el.innerHTML = `
+            <div class="title">${escapeHTML(c.title || "(untitled)")}</div>
+            <div class="meta">
+              <span class="badge ${c.source}">${c.source}</span>
+              <span>${c.messageCount} msgs</span>
+              <span>${fmtDate(c.updatedAt || c.createdAt)}</span>
+            </div>`;
+          el.addEventListener("click", () => { state.selectedId = c.id; render(); });
+          list.appendChild(el);
+        }
+        if (!items.length) list.innerHTML = `<div style="padding:16px; color:var(--muted)">No conversations match.</div>`;
+      } else if (state.tab === "projects") {
+        const items = state.data.projects
+          .filter((p) => !filter || (p.name || "").toLowerCase().includes(filter));
+        for (const p of items) {
+          const el = document.createElement("div");
+          el.className = "list-item" + (p.id === state.selectedId ? " active" : "");
+          const convCount = state.data.conversations.filter((c) => c.projectId === p.id).length;
+          el.innerHTML = `
+            <div class="title">${escapeHTML(p.name || "(untitled)")}</div>
+            <div class="meta">
+              <span class="badge ${p.source}">${p.source}</span>
+              <span>${convCount} convs</span>
+              <span>${p.documents.length} docs</span>
+            </div>`;
+          el.addEventListener("click", () => { state.selectedId = p.id; render(); });
+          list.appendChild(el);
+        }
+        if (!items.length) list.innerHTML = `<div style="padding:16px; color:var(--muted)">No projects in this export.</div>`;
+      } else {
+        list.innerHTML = `<div style="padding:16px; color:var(--muted)">Switch to a tab to browse.</div>`;
+      }
+    }
+
+    function renderDetail() {
+      const head = $("detailTitle");
+      const meta = $("detailMeta");
+      const body = $("detailBody");
+      body.innerHTML = "";
+
+      if (!state.data) return;
+
+      if (state.tab === "summary") {
+        head.textContent = "Summary";
+        meta.textContent = `schema v${state.data.schemaVersion}`;
+        const totalMsgs = state.data.conversations.reduce((s, c) => s + c.messageCount, 0);
+        const totalDocs = state.data.projects.reduce((s, p) => s + p.documents.length, 0);
+        const wrap = document.createElement("div");
+        wrap.innerHTML = `
+          <div class="summary">
+            <div class="card"><div class="num">${state.data.conversations.length}</div><div class="label">Conversations</div></div>
+            <div class="card"><div class="num">${state.data.projects.length}</div><div class="label">Projects</div></div>
+            <div class="card"><div class="num">${totalMsgs}</div><div class="label">Messages</div></div>
+            <div class="card"><div class="num">${totalDocs}</div><div class="label">Project documents</div></div>
+          </div>
+          <div class="sources">
+            <div class="label" style="color:var(--muted); text-transform:uppercase; font-size:11px; margin-bottom:6px;">Sources</div>
+            ${(state.data.sources || []).map((s) => `
+              <div class="source-row">
+                <span class="badge ${s.source}">${s.source}</span>
+                <span style="flex:1">${escapeHTML(s.filename)}</span>
+                <span style="color:var(--muted)">${s.counts.conversations} convs · ${s.counts.projects} projs</span>
+              </div>`).join("")}
+          </div>`;
+        body.appendChild(wrap);
+        return;
+      }
+
+      const item = state.tab === "conversations"
+        ? state.data.conversations.find((c) => c.id === state.selectedId)
+        : state.data.projects.find((p) => p.id === state.selectedId);
+
+      if (!item) {
+        head.textContent = "Select an item";
+        meta.textContent = "";
+        return;
+      }
+
+      if (state.tab === "conversations") {
+        head.textContent = item.title || "(untitled)";
+        meta.innerHTML = `<span class="badge ${item.source}">${item.source}</span>
+          <span>${item.messageCount} messages</span>
+          <span>${fmtDate(item.updatedAt || item.createdAt)}</span>
+          ${item.model ? `<span>model: ${escapeHTML(item.model)}</span>` : ""}`;
+        for (const m of item.messages) {
+          const el = document.createElement("div");
+          el.className = "message";
+          el.innerHTML = `
+            <div class="message-head">
+              <span class="role ${m.role}">${m.role}</span>
+              ${m.model ? `<span>· ${escapeHTML(m.model)}</span>` : ""}
+              ${m.createdAt ? `<span>· ${fmtDate(m.createdAt)}</span>` : ""}
+            </div>
+            <div class="body">${escapeHTML(m.content || "(no text content)")}</div>
+            ${(m.attachments || []).map((a) =>
+              `<span class="attachment">${escapeHTML(a.name || "attachment")}${a.type ? ` · ${escapeHTML(a.type)}` : ""}</span>`
+            ).join("")}`;
+          body.appendChild(el);
+        }
+      } else {
+        head.textContent = item.name || "(untitled)";
+        meta.innerHTML = `<span class="badge ${item.source}">${item.source}</span>
+          <span>${item.documents.length} documents</span>
+          ${item.updatedAt ? `<span>${fmtDate(item.updatedAt)}</span>` : ""}`;
+        const wrap = document.createElement("div");
+        wrap.className = "project-detail";
+        wrap.innerHTML = `
+          ${item.description ? `<div class="label">Description</div><div>${escapeHTML(item.description)}</div>` : ""}
+          ${item.systemPrompt ? `<div class="label">System prompt</div><pre>${escapeHTML(item.systemPrompt)}</pre>` : ""}
+          <div class="label">Conversations in this project</div>
+          ${(() => {
+            const convs = state.data.conversations.filter((c) => c.projectId === item.id);
+            if (!convs.length) return `<div style="color:var(--muted); font-size:13px;">None linked.</div>`;
+            return convs.map((c) =>
+              `<div class="doc">
+                 <div style="font-weight:600">${escapeHTML(c.title || "(untitled)")}</div>
+                 <div style="font-size:11px; color:var(--muted)">${c.messageCount} msgs · ${fmtDate(c.updatedAt || c.createdAt)}</div>
+               </div>`).join("");
+          })()}
+          ${item.documents.length ? `<div class="label">Documents</div>` : ""}
+          ${item.documents.map((d) =>
+            `<div class="doc">
+               <div style="font-weight:600">${escapeHTML(d.name || "(unnamed)")}</div>
+               ${d.content ? `<pre>${escapeHTML(d.content.slice(0, 4000))}${d.content.length > 4000 ? "\n…" : ""}</pre>` : ""}
+             </div>`).join("")}`;
+        body.appendChild(wrap);
+      }
+    }
+
+    function escapeHTML(s) {
+      return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      })[c]);
+    }
+
+    // Wire up events.
+    dropzone.addEventListener("click", () => fileInput.click());
+    $("pickLink").addEventListener("click", (e) => { e.preventDefault(); fileInput.click(); });
+    $("loadMore").addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", () => {
+      if (fileInput.files && fileInput.files.length) processFiles(Array.from(fileInput.files));
+      fileInput.value = "";
+    });
+
+    ["dragenter", "dragover"].forEach((ev) =>
+      dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.add("drag"); }));
+    ["dragleave", "drop"].forEach((ev) =>
+      dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.remove("drag"); }));
+    dropzone.addEventListener("drop", (e) => {
+      const files = Array.from(e.dataTransfer.files || []);
+      if (files.length) processFiles(files);
+    });
+    document.body.addEventListener("dragover", (e) => e.preventDefault());
+    document.body.addEventListener("drop", (e) => {
+      e.preventDefault();
+      if (!app.classList.contains("hidden")) {
+        const files = Array.from(e.dataTransfer.files || []);
+        if (files.length) processFiles(files);
+      }
+    });
+
+    document.querySelectorAll(".tab").forEach((el) => {
+      el.addEventListener("click", () => { state.tab = el.dataset.tab; state.selectedId = null; render(); });
+    });
+    $("searchInput").addEventListener("input", (e) => { state.filter = e.target.value; renderList(); });
+
+    $("downloadBtn").addEventListener("click", () => {
+      const blob = new Blob([JSON.stringify(state.data, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "normalized.json";
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    });
+
+    $("resetBtn").addEventListener("click", () => {
+      state.data = null; state.results = []; state.selectedId = null;
+      state.tab = "conversations"; state.filter = "";
+      empty.classList.remove("hidden");
+      app.classList.add("hidden");
+      $("downloadBtn").hidden = true;
+      $("resetBtn").hidden = true;
+      $("loadMore").hidden = true;
+    });
+  </script>
+</body>
+</html>

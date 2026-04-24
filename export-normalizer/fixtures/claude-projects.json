@@ -1,0 +1,20 @@
+[
+  {
+    "uuid": "claude-proj-1",
+    "name": "Migration Project",
+    "description": "Plan and execute the system migration.",
+    "prompt_template": "You are a senior staff engineer helping with a database migration. Be concise.",
+    "created_at": "2024-05-20T08:00:00.000000+00:00",
+    "updated_at": "2024-06-01T10:00:00.000000+00:00",
+    "is_private": true,
+    "creator": { "uuid": "user-1" },
+    "docs": [
+      {
+        "uuid": "doc-1",
+        "filename": "runbook.md",
+        "content": "# Runbook\n1. Snapshot DB\n2. Apply migrations\n3. Verify",
+        "created_at": "2024-05-20T08:05:00.000000+00:00"
+      }
+    ]
+  }
+]

@@ -1,0 +1,128 @@
+[
+  {
+    "title": "Greeting and capitals",
+    "create_time": 1717200000,
+    "update_time": 1717200300,
+    "mapping": {
+      "root": {
+        "id": "root",
+        "message": null,
+        "parent": null,
+        "children": ["sys-1"]
+      },
+      "sys-1": {
+        "id": "sys-1",
+        "message": {
+          "id": "sys-1",
+          "author": { "role": "system", "name": null, "metadata": {} },
+          "create_time": null,
+          "content": { "content_type": "text", "parts": [""] },
+          "metadata": {}
+        },
+        "parent": "root",
+        "children": ["u-1"]
+      },
+      "u-1": {
+        "id": "u-1",
+        "message": {
+          "id": "u-1",
+          "author": { "role": "user", "name": null, "metadata": {} },
+          "create_time": 1717200000,
+          "content": { "content_type": "text", "parts": ["Hi there"] },
+          "metadata": {}
+        },
+        "parent": "sys-1",
+        "children": ["a-1"]
+      },
+      "a-1": {
+        "id": "a-1",
+        "message": {
+          "id": "a-1",
+          "author": { "role": "assistant", "name": null, "metadata": {} },
+          "create_time": 1717200060,
+          "content": { "content_type": "text", "parts": ["Hello! How can I help you today?"] },
+          "metadata": { "model_slug": "gpt-4o" }
+        },
+        "parent": "u-1",
+        "children": ["u-2", "u-2-alt"]
+      },
+      "u-2": {
+        "id": "u-2",
+        "message": {
+          "id": "u-2",
+          "author": { "role": "user", "name": null, "metadata": {} },
+          "create_time": 1717200120,
+          "content": { "content_type": "text", "parts": ["What is the capital of France?"] },
+          "metadata": {}
+        },
+        "parent": "a-1",
+        "children": ["a-2"]
+      },
+      "a-2": {
+        "id": "a-2",
+        "message": {
+          "id": "a-2",
+          "author": { "role": "assistant", "name": null, "metadata": {} },
+          "create_time": 1717200180,
+          "content": { "content_type": "text", "parts": ["The capital of France is Paris."] },
+          "metadata": { "model_slug": "gpt-4o" }
+        },
+        "parent": "u-2",
+        "children": []
+      },
+      "u-2-alt": {
+        "id": "u-2-alt",
+        "message": {
+          "id": "u-2-alt",
+          "author": { "role": "user", "name": null, "metadata": {} },
+          "create_time": 1717200121,
+          "content": { "content_type": "text", "parts": ["Never mind"] },
+          "metadata": {}
+        },
+        "parent": "a-1",
+        "children": []
+      }
+    },
+    "current_node": "a-2",
+    "conversation_id": "cgpt-conv-1",
+    "gizmo_id": null,
+    "default_model_slug": "gpt-4o"
+  },
+  {
+    "title": "Custom GPT chat",
+    "create_time": 1717300000,
+    "update_time": 1717300120,
+    "mapping": {
+      "root": { "id": "root", "message": null, "parent": null, "children": ["u-1"] },
+      "u-1": {
+        "id": "u-1",
+        "message": {
+          "id": "u-1",
+          "author": { "role": "user" },
+          "create_time": 1717300000,
+          "content": { "content_type": "text", "parts": ["Run the macro"] },
+          "metadata": {}
+        },
+        "parent": "root",
+        "children": ["a-1"]
+      },
+      "a-1": {
+        "id": "a-1",
+        "message": {
+          "id": "a-1",
+          "author": { "role": "assistant" },
+          "create_time": 1717300060,
+          "content": { "content_type": "text", "parts": ["Done."] },
+          "metadata": { "model_slug": "gpt-4o-mini" }
+        },
+        "parent": "u-1",
+        "children": []
+      }
+    },
+    "current_node": "a-1",
+    "conversation_id": "cgpt-conv-2",
+    "gizmo_id": "g-abc123",
+    "gizmo_title": "Macro Runner",
+    "default_model_slug": "gpt-4o-mini"
+  }
+]
