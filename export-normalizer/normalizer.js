@@ -197,6 +197,10 @@
     const branch = walkChatGPTBranch(mapping, conv.current_node);
     const messages = [];
     let lastModel = null;
+    // Namespace message ids by conversation so the same in-zip node id ("u-1"
+    // appears in many conversations) doesn't collide when flattened into a
+    // messages table.
+    const convScope = conv.conversation_id || conv.id || "x";
 
     for (const node of branch) {
       if (isChatGPTHidden(node)) continue;
@@ -207,7 +211,7 @@
       const model = (m.metadata && m.metadata.model_slug) || null;
       if (model) lastModel = model;
       messages.push({
-        id: safeId("cgpt-msg", m.id || node.id),
+        id: safeId("cgpt-msg", `${convScope}:${m.id || node.id}`),
         role,
         content: text,
         parts,
@@ -361,10 +365,11 @@
       return at - bt;
     });
 
+    const convScope = conv.uuid || "x";
     const messages = raw.map((m) => {
       const { text, parts } = claudeMessageContent(m);
       return {
-        id: safeId("claude-msg", m.uuid),
+        id: safeId("claude-msg", `${convScope}:${m.uuid}`),
         role: claudeRole(m.sender),
         content: text,
         parts,
@@ -424,6 +429,249 @@
     };
   }
 
+  // ---------- Gemini (Google Takeout) ----------
+  //
+  // Google Takeout exports Gemini chats as a folder of per-conversation JSON
+  // files (sometimes a single combined file). Each conversation is a list of
+  // turns alternating user/model.
+
+  function geminiRole(role) {
+    if (role === "user" || role === "human") return "user";
+    if (role === "model" || role === "assistant" || role === "bot") return "assistant";
+    if (role === "system") return "system";
+    return "user";
+  }
+
+  function geminiTurnContent(turn) {
+    const parts = [];
+    let text = "";
+    const rawParts = Array.isArray(turn.parts) ? turn.parts : [];
+    for (const p of rawParts) {
+      if (typeof p === "string") {
+        if (p) {
+          parts.push({ type: "text", text: p });
+          text += (text ? "\n\n" : "") + p;
+        }
+      } else if (p && typeof p === "object") {
+        if (typeof p.text === "string") {
+          parts.push({ type: "text", text: p.text });
+          text += (text ? "\n\n" : "") + p.text;
+        } else if (p.inline_data || p.inlineData) {
+          const d = p.inline_data || p.inlineData;
+          parts.push({ type: "image", mimeType: d.mime_type || d.mimeType || null });
+        } else {
+          parts.push({ type: "unknown", raw: p });
+        }
+      }
+    }
+    if (!text && typeof turn.text === "string") {
+      text = turn.text;
+      if (text) parts.unshift({ type: "text", text });
+    }
+    return { text, parts };
+  }
+
+  function normalizeGeminiConversation(conv, sourceTag) {
+    const sourceTagFinal = sourceTag || "gemini";
+    const turns = Array.isArray(conv.turns)
+      ? conv.turns
+      : Array.isArray(conv.messages)
+      ? conv.messages
+      : Array.isArray(conv.contents)
+      ? conv.contents
+      : [];
+
+    const messages = [];
+    for (let i = 0; i < turns.length; i++) {
+      const t = turns[i];
+      const { text, parts } = geminiTurnContent(t);
+      if (!text && parts.length === 0) continue;
+      messages.push({
+        id: safeId("gem-msg", t.id || t.uuid || `${conv.id || conv.conversation_id || "x"}-${i}`),
+        role: geminiRole(t.role),
+        content: text,
+        parts,
+        createdAt: toISO(t.create_time || t.created_at || t.timestamp),
+        model: t.model || null,
+        attachments: [],
+      });
+    }
+    const id = conv.id || conv.conversation_id || conv.uuid || conv.title || null;
+    return {
+      id: safeId("gem-conv", id),
+      source: sourceTagFinal,
+      sourceId: id,
+      projectId: null,
+      title: conv.title || conv.name || "(untitled)",
+      createdAt: toISO(conv.create_time || conv.created_at),
+      updatedAt: toISO(conv.update_time || conv.updated_at),
+      model: conv.model || null,
+      messageCount: messages.length,
+      messages,
+    };
+  }
+
+  function normalizeGemini(payload, filename) {
+    const sourceTag = "gemini";
+    const list = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload.conversations)
+      ? payload.conversations
+      : Array.isArray(payload.chats)
+      ? payload.chats
+      : payload.turns || payload.messages
+      ? [payload]
+      : [];
+    const convs = list.map((c) => normalizeGeminiConversation(c, sourceTag));
+    return {
+      source: sourceTag,
+      filename,
+      counts: { projects: 0, conversations: convs.length },
+      projects: [],
+      conversations: convs,
+    };
+  }
+
+  // ---------- Generic linear chat (Grok / Mistral / DeepSeek) ----------
+  //
+  // These three vendors all ship `conversations.json` as an array of
+  // {id, title, messages:[{role, content, created_at}]} with minor field-name
+  // variation. We share one normalizer parameterized by id-prefix and
+  // field aliases.
+
+  function pickField(obj, names) {
+    for (const n of names) {
+      if (obj[n] !== undefined && obj[n] !== null && obj[n] !== "") return obj[n];
+    }
+    return null;
+  }
+
+  function genericRole(role) {
+    if (role === "user" || role === "human") return "user";
+    if (role === "assistant" || role === "ai" || role === "bot") return "assistant";
+    if (role === "system") return "system";
+    if (role === "tool" || role === "function") return "tool";
+    return "user";
+  }
+
+  function genericMessageContent(msg) {
+    const parts = [];
+    let text = "";
+    const c = msg.content;
+    if (typeof c === "string") {
+      text = c;
+      if (text) parts.push({ type: "text", text });
+    } else if (Array.isArray(c)) {
+      for (const block of c) {
+        if (!block) continue;
+        if (typeof block === "string") {
+          parts.push({ type: "text", text: block });
+          text += (text ? "\n\n" : "") + block;
+        } else if (block.type === "text" && typeof block.text === "string") {
+          parts.push({ type: "text", text: block.text });
+          text += (text ? "\n\n" : "") + block.text;
+        } else {
+          parts.push({ type: block.type || "unknown", raw: block });
+        }
+      }
+    } else if (c && typeof c === "object" && typeof c.text === "string") {
+      text = c.text;
+      parts.push({ type: "text", text });
+    }
+    if (!text && typeof msg.text === "string") {
+      text = msg.text;
+      if (text) parts.unshift({ type: "text", text });
+    }
+    return { text, parts };
+  }
+
+  function normalizeGenericLinearConversation(conv, opts) {
+    const idRaw = pickField(conv, ["id", "conversation_id", "uuid", "chat_id"]);
+    const title = pickField(conv, ["title", "name"]) || "(untitled)";
+    const rawMsgs = Array.isArray(conv.messages)
+      ? conv.messages.slice()
+      : Array.isArray(conv.chat_messages)
+      ? conv.chat_messages.slice()
+      : Array.isArray(conv.turns)
+      ? conv.turns.slice()
+      : [];
+
+    rawMsgs.sort((a, b) => {
+      const ai = typeof a.index === "number" ? a.index : 0;
+      const bi = typeof b.index === "number" ? b.index : 0;
+      if (ai !== bi) return ai - bi;
+      const at = Date.parse(a.created_at || a.create_time || a.timestamp || 0) || 0;
+      const bt = Date.parse(b.created_at || b.create_time || b.timestamp || 0) || 0;
+      return at - bt;
+    });
+
+    const messages = rawMsgs
+      .map((m, i) => {
+        const { text, parts } = genericMessageContent(m);
+        if (!text && parts.length === 0) return null;
+        const mid = pickField(m, ["id", "uuid", "message_id"]) || `${idRaw || "x"}-${i}`;
+        return {
+          id: safeId(opts.msgPrefix, mid),
+          role: genericRole(pickField(m, ["role", "sender", "author"]) || "user"),
+          content: text,
+          parts,
+          createdAt: toISO(pickField(m, ["created_at", "create_time", "timestamp"])),
+          model: m.model || null,
+          attachments: [],
+        };
+      })
+      .filter(Boolean);
+
+    return {
+      id: safeId(opts.convPrefix, idRaw),
+      source: opts.source,
+      sourceId: idRaw,
+      projectId: null,
+      title,
+      createdAt: toISO(pickField(conv, ["created_at", "create_time"])),
+      updatedAt: toISO(pickField(conv, ["updated_at", "update_time"])),
+      model: pickField(conv, ["model", "default_model"]),
+      messageCount: messages.length,
+      messages,
+    };
+  }
+
+  function makeGenericNormalizer(opts) {
+    return function (payload, filename) {
+      const list = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload.conversations)
+        ? payload.conversations
+        : Array.isArray(payload.chats)
+        ? payload.chats
+        : [];
+      const convs = list.map((c) => normalizeGenericLinearConversation(c, opts));
+      return {
+        source: opts.source,
+        filename,
+        counts: { projects: 0, conversations: convs.length },
+        projects: [],
+        conversations: convs,
+      };
+    };
+  }
+
+  const normalizeGrok = makeGenericNormalizer({
+    source: "grok",
+    convPrefix: "grok-conv",
+    msgPrefix: "grok-msg",
+  });
+  const normalizeMistral = makeGenericNormalizer({
+    source: "mistral",
+    convPrefix: "mistral-conv",
+    msgPrefix: "mistral-msg",
+  });
+  const normalizeDeepSeek = makeGenericNormalizer({
+    source: "deepseek",
+    convPrefix: "ds-conv",
+    msgPrefix: "ds-msg",
+  });
+
   // ---------- format detection ----------
 
   function detectFormat(parsed) {
@@ -434,6 +682,20 @@
       // {uuid, name}, so we look for the project-only fields first.
       if (sample.prompt_template !== undefined || Array.isArray(sample.docs)) return "claude-projects";
       if (Array.isArray(sample.chat_messages) || (sample.uuid && sample.name)) return "claude-conversations";
+      // Generic linear shapes — try to disambiguate by self-declared source.
+      const tag = (sample._source || sample.source || "").toLowerCase();
+      if (tag === "grok") return "grok";
+      if (tag === "mistral") return "mistral";
+      if (tag === "deepseek") return "deepseek";
+      if (tag === "gemini") return "gemini";
+      // Gemini turns/contents shape
+      if (Array.isArray(sample.turns) || Array.isArray(sample.contents)) return "gemini";
+      // Fallback for any {messages:[...]} array (caller can override via --source)
+      if (Array.isArray(sample.messages)) return "generic-linear";
+    }
+    if (parsed && typeof parsed === "object") {
+      // Single Gemini Takeout file (one conversation per file)
+      if (Array.isArray(parsed.turns) || Array.isArray(parsed.contents)) return "gemini";
     }
     return "unknown";
   }
@@ -441,6 +703,11 @@
   // Detect from a {filename: contents} bag (e.g. extracted zip).
   function detectFromBundle(files) {
     const names = Object.keys(files);
+
+    // Gemini Takeout uses a "Gemini Apps/" subfolder of per-conversation JSON files.
+    if (names.some((n) => /(^|\/)gemini[ _-]?apps?(\/|$)/i.test(n))) return "gemini-zip";
+    if (names.some((n) => /(^|\/)my activity\/gemini(\/|$)/i.test(n))) return "gemini-zip";
+
     const hasClaudeShape = names.some(
       (n) => /(^|\/)conversations\.json$/i.test(n) || /(^|\/)projects\.json$/i.test(n)
     );
@@ -454,6 +721,10 @@
           const fmt = detectFormat(parsed);
           if (fmt === "chatgpt") return "chatgpt-zip";
           if (fmt === "claude-conversations") return "claude-zip";
+          if (fmt === "grok") return "grok-zip";
+          if (fmt === "mistral") return "mistral-zip";
+          if (fmt === "deepseek") return "deepseek-zip";
+          if (fmt === "gemini") return "gemini-zip";
         } catch (_) {
           // ignore
         }
@@ -468,12 +739,22 @@
    * Parse a single JSON file's contents. The caller tells us the filename so we
    * can record provenance; format is auto-detected from the JSON shape.
    */
-  function normalizeJSON(text, filename) {
+  function normalizeJSON(text, filename, sourceHint) {
     const parsed = JSON.parse(text);
-    const fmt = detectFormat(parsed);
+    const fmt = sourceHint || detectFormat(parsed);
     if (fmt === "chatgpt") return normalizeChatGPT(parsed, filename);
     if (fmt === "claude-conversations") return normalizeClaude({ conversations: parsed }, filename);
     if (fmt === "claude-projects") return normalizeClaude({ projects: parsed }, filename);
+    if (fmt === "claude") return normalizeClaude(parsed, filename);
+    if (fmt === "gemini") return normalizeGemini(parsed, filename);
+    if (fmt === "grok") return normalizeGrok(parsed, filename);
+    if (fmt === "mistral") return normalizeMistral(parsed, filename);
+    if (fmt === "deepseek") return normalizeDeepSeek(parsed, filename);
+    if (fmt === "generic-linear") {
+      throw new Error(
+        `Ambiguous shape in ${filename}: pass --source grok|mistral|deepseek to disambiguate`
+      );
+    }
     throw new Error(`Unrecognized JSON shape in ${filename}`);
   }
 
@@ -503,6 +784,34 @@
       if (convText) payload.conversations = JSON.parse(convText);
       if (projText) payload.projects = JSON.parse(projText);
       return normalizeClaude(payload, filename);
+    }
+    if (fmt === "grok-zip" || fmt === "mistral-zip" || fmt === "deepseek-zip") {
+      const text = find(/(^|\/)conversations\.json$/i);
+      const parsed = JSON.parse(text);
+      if (fmt === "grok-zip") return normalizeGrok(parsed, filename);
+      if (fmt === "mistral-zip") return normalizeMistral(parsed, filename);
+      return normalizeDeepSeek(parsed, filename);
+    }
+    if (fmt === "gemini-zip") {
+      // Combine all per-conversation JSONs found under the Gemini folder.
+      const conversations = [];
+      for (const name of Object.keys(files)) {
+        if (!/\.json$/i.test(name)) continue;
+        if (
+          !/(^|\/)gemini[ _-]?apps?(\/|$)/i.test(name) &&
+          !/(^|\/)my activity\/gemini(\/|$)/i.test(name)
+        ) {
+          continue;
+        }
+        try {
+          const parsed = JSON.parse(files[name]);
+          if (Array.isArray(parsed)) conversations.push(...parsed);
+          else conversations.push(parsed);
+        } catch (_) {
+          // skip unparseable file
+        }
+      }
+      return normalizeGemini(conversations, filename);
     }
     throw new Error(`Unhandled bundle format ${fmt}`);
   }
@@ -545,6 +854,16 @@
     normalizeBundle,
     normalizeChatGPT,
     normalizeClaude,
+    normalizeGemini,
+    normalizeGrok,
+    normalizeMistral,
+    normalizeDeepSeek,
+    // Per-conversation entry points used by the streaming CLI ingester.
+    normalizeChatGPTConversation,
+    normalizeClaudeConversation,
+    normalizeClaudeProject,
+    normalizeGeminiConversation,
+    normalizeGenericLinearConversation,
     detectFormat,
     detectFromBundle,
     combine,

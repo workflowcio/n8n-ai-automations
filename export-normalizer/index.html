@@ -493,6 +493,42 @@
       $("resetBtn").hidden = true;
       $("loadMore").hidden = true;
     });
+
+    // When the page is hosted by `chat-archive serve`, auto-load the SQLite-
+    // backed JSON instead of asking for a file. Optional ?project= / ?source=
+    // query params scope the load. Falls back to the dropzone on any error
+    // (e.g. when the file is opened directly from disk).
+    (async function maybeAutoLoad() {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const qs = new URLSearchParams();
+        for (const k of ["project", "source", "since"]) {
+          if (params.get(k)) qs.set(k, params.get(k));
+        }
+        const url = "/api/normalized.json" + (qs.toString() ? "?" + qs.toString() : "");
+        const resp = await fetch(url, { headers: { accept: "application/json" } });
+        if (!resp.ok) return;
+        const data = await resp.json();
+        state.results = [{ source: "store", filename: "store.db", counts: { projects: data.projects.length, conversations: data.conversations.length }, projects: data.projects, conversations: data.conversations }];
+        state.data = data;
+        empty.classList.add("hidden");
+        app.classList.remove("hidden");
+        $("downloadBtn").hidden = false;
+        $("resetBtn").hidden = false;
+        $("loadMore").hidden = false;
+        if (data.conversations.length) {
+          state.tab = "conversations";
+          state.selectedId = data.conversations[0].id;
+        } else if (data.projects.length) {
+          state.tab = "projects";
+          state.selectedId = data.projects[0].id;
+        }
+        render();
+        showToast(`Loaded ${data.conversations.length} conversations from store`);
+      } catch (_) {
+        // ignore — leave the dropzone visible for direct-file usage
+      }
+    })();
   </script>
 </body>
 </html>

@@ -1,0 +1,32 @@
+[
+  {
+    "id": "gem-conv-1",
+    "title": "Travel ideas",
+    "created_at": "2024-07-01T12:00:00Z",
+    "updated_at": "2024-07-01T12:05:00Z",
+    "model": "gemini-1.5-pro",
+    "turns": [
+      {
+        "role": "user",
+        "create_time": "2024-07-01T12:00:00Z",
+        "parts": [{ "text": "Where should I go in Japan in April?" }]
+      },
+      {
+        "role": "model",
+        "create_time": "2024-07-01T12:00:30Z",
+        "parts": [
+          { "text": "April is cherry-blossom season. Consider Kyoto, Tokyo, and Hakone." }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "gem-conv-2",
+    "title": "Quick math",
+    "created_at": "2024-07-02T09:00:00Z",
+    "turns": [
+      { "role": "user", "parts": [{ "text": "What's 17 * 23?" }] },
+      { "role": "model", "parts": [{ "text": "391." }] }
+    ]
+  }
+]

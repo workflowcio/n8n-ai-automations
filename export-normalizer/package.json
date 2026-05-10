@@ -1,0 +1,20 @@
+{
+  "name": "chat-archive",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Local-first multi-LLM export normalizer with SQLite + browser UI",
+  "bin": {
+    "chat-archive": "cli/index.js"
+  },
+  "scripts": {
+    "test": "node test.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.5.0",
+    "stream-json": "^1.8.0",
+    "yauzl": "^3.1.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

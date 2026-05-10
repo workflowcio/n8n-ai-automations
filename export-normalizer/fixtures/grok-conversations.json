@@ -1,0 +1,25 @@
+[
+  {
+    "_source": "grok",
+    "id": "grok-conv-1",
+    "title": "Rocket launch schedule",
+    "created_at": "2024-08-01T10:00:00Z",
+    "updated_at": "2024-08-01T10:02:00Z",
+    "model": "grok-2",
+    "messages": [
+      {
+        "id": "g-msg-1",
+        "role": "user",
+        "content": "When is the next Falcon 9 launch?",
+        "created_at": "2024-08-01T10:00:00Z"
+      },
+      {
+        "id": "g-msg-2",
+        "role": "assistant",
+        "content": "The next Falcon 9 launch is scheduled for tomorrow at 14:00 UTC.",
+        "created_at": "2024-08-01T10:00:30Z",
+        "model": "grok-2"
+      }
+    ]
+  }
+]
